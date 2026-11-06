@@ -1,0 +1,14 @@
+{
+  "name": "orbit-remote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Control every Claude Code session on every machine from your phone: open, close, chat, approve permissions, view and control screens, and let sessions message each other across machines. No external dependencies.",
+  "scripts": {
+    "start": "node src/main.mjs",
+    "test": "node --test \"tests/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

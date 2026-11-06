@@ -1,0 +1,10 @@
+{
+  "actions": [
+    { "label": "Báo tiến độ", "scope": "session", "send": "Tóm tắt ngắn tiến độ hiện tại: đã xong gì, đang làm gì, việc tiếp theo. Tối đa 4 câu." },
+    { "label": "Tiếp tục", "scope": "session", "send": "Tiếp tục." },
+    { "label": "Rà thay đổi", "scope": "session", "hint": "Đọc lại git status và git diff, báo chỗ đáng ngờ", "send": "Rà lại toàn bộ thay đổi chưa commit (git status, git diff): có gì bị xoá nhầm, sinh ra ngoài ý muốn hay chưa xong không? Chỉ báo, chưa sửa." },
+    { "label": "Chạy kiểm", "scope": "session", "hint": "Chạy bộ kiểm của dự án và báo kết quả", "send": "Chạy bộ kiểm (test) của dự án, báo số đạt và số hỏng; hỏng thì nêu nguyên nhân, chưa sửa." },
+    { "label": "Commit", "scope": "session", "send": "Commit các thay đổi hiện tại với lời commit rõ ràng. Không push.", "confirm": "Commit các thay đổi (không push)?" },
+    { "label": "Commit và push", "scope": "session", "send": "Commit các thay đổi hiện tại với lời commit rõ ràng rồi push lên remote.", "confirm": "Commit rồi push lên remote?" }
+  ]
+}

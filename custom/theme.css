@@ -1,0 +1,11 @@
+/* Theme riêng của bạn, nạp SAU styles.css nên mọi biến ở đây thắng.
+ *
+ * Bỏ dấu chú thích ở dòng nào thì dòng đó có hiệu lực. Lưu file rồi kéo app xuống để tải
+ * lại (hoặc đóng mở lại app trên điện thoại). Danh sách biến đầy đủ: đầu file web/styles.css. */
+
+:root {
+  /* --font-size: 16px; */
+  /* --radius: 20px; */
+  /* --accent-cyan: #38bdf8; */
+  /* --st-busy: #38bdf8; */
+}

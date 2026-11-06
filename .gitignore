@@ -1,0 +1,7 @@
+# Trạm khai cho riêng bạn ("node src/main.mjs tailnet setup" ghi). Muốn các máy của mình nhận nó qua git thì
+# commit vào bản fork riêng: git add -f custom/hub.json
+# Your own hub declaration (written by "tailnet setup"). To sync it to your machines through a private fork:
+# git add -f custom/hub.json
+custom/hub.json
+
+node_modules/

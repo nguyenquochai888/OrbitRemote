@@ -1,0 +1,2 @@
+# cmd.exe đọc tệp .cmd theo vị trí dòng: luôn giữ CRLF. / cmd.exe needs CRLF in batch files.
+*.cmd text eol=crlf
