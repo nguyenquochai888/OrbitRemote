@@ -15,13 +15,11 @@ import { STATUS_LABEL } from './home.js';
 import { claudeAccountBlock } from './claude-login.js';
 import { mountScreenPanel } from './screen.js';
 import { mountSession } from './session.js';
+import { externalRow, loadPast, pastOf, pastRow } from '../lib/past.js';
 
 const RUNNING = new Set(['starting', 'idle', 'busy', 'waiting']);
 const WATCH_MS = 8000; // nhịp xem lại nhật ký của phiên ngoài app khi màn đang mở
-const PAST_TTL_MS = 20000; // mở lại danh sách phiên trong chừng này thì dùng lại danh sách phiên cũ vừa đọc
-// Phiên cũ trên máy (nhật ký Claude Code) đã đọc gần nhất của mỗi máy, để màn xem chỉ-đọc biết tên và
-// thao tác được với phiên vừa chọn trong danh sách.
-const pastCache = new Map(); // mã máy -> [{ claudeSessionId, title, cwd, modified, sizeKb, maybeActive }]
+const PAST_TTL_MS = 20000; // mở lại danh sách phiên trong chừng này thì dùng lại danh sách phiên cũ vừa đọc (lib/past.js)
 
 const PLATFORM = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
 // Setup báo kết quả sau mỗi bước; bước dài nhất (chờ duyệt, cài bằng winget) dưới 15 phút.
@@ -204,28 +202,7 @@ function sessionRow(s, float) {
       icon('pip', 18)));
 }
 
-function externalRow(machineId, t) {
-  return h('a', { class: `drop-row ext${t.active ? ' active' : ''}`, href: `#/x/${machineId}/${t.claudeSessionId}` },
-    h('span', { class: 'status-dot' }),
-    h('span', { class: 'drop-main' },
-      h('span', { class: 'drop-name' }, t.title),
-      h('span', { class: 'drop-meta' }, [baseName(t.cwd), 'ngoài app'].filter(Boolean).join(' · '))),
-    h('span', { class: 'drop-time' }, timeAgo(t.modified)));
-}
-
-// Phiên Claude cũ trên máy mà app không giữ: mở bằng VS Code hay terminal rồi đã đóng. Chạm là xem
-// hội thoại (chỉ đọc), từ đó "Tiếp tục ở app" hay "Tách nhánh".
-const sizeLabel = (kb) => (!kb ? '' : kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`);
-function pastRow(machineId, t) {
-  return h('a', { class: `drop-row ext past${t.maybeActive ? ' active' : ''}`, href: `#/x/${machineId}/${t.claudeSessionId}` },
-    h('span', { class: 'status-dot' }),
-    h('span', { class: 'drop-main' },
-      h('span', { class: 'drop-name' }, t.title),
-      h('span', { class: 'drop-meta' }, [baseName(t.cwd), sizeLabel(t.sizeKb)].filter(Boolean).join(' · '))),
-    h('span', { class: 'drop-time' }, timeAgo(t.modified)));
-}
-
-// past: phiên cũ đọc từ máy { state: 'idle' | 'loading' | 'ready' | 'error', list, error }.
+// past: phiên cũ đọc từ máy { state: 'idle' | 'loading' | 'ready' | 'error', list, error } (lib/past.js).
 function sessionDropContent(m, past, float) {
   const all = sessionsOf(m.id).sort((a, b) => (b.lastActivity || '').localeCompare(a.lastActivity || ''));
   const running = all.filter((s) => RUNNING.has(s.status));
@@ -259,8 +236,9 @@ function sessionDropContent(m, past, float) {
 
 // ---- Màn chi tiết một máy ------------------------------------------------------------------
 // fromSession: mở từ nút máy trong màn một phiên thì nút quay lại đưa về phiên đó, không về màn chính. fromGroup: phiên
-// đó mở từ màn một nhóm, nên quay về phiên vẫn giữ đường về nhóm.
-export function mountMachine(root, id, { fromSession = '', fromGroup = '' } = {}) {
+// đó mở từ màn một nhóm, nên quay về phiên vẫn giữ đường về nhóm. openList: mở sẵn danh sách Phiên (nút "Xem tất cả"
+// dưới máy ở màn chính, đường dẫn #/m/<máy>/list).
+export function mountMachine(root, id, { fromSession = '', fromGroup = '', openList = false } = {}) {
   const title = h('div', { class: 'title' });
   const subtitle = h('div', { class: 'subtitle' });
   // Hàng nút gọn (nhỏ, sát thanh trên) để khung màn hình bên dưới có nhiều chỗ nhất.
@@ -597,41 +575,22 @@ export function mountMachine(root, id, { fromSession = '', fromGroup = '' } = {}
     drop.classList.toggle('open', dropOpen);
     dropBtn.classList.toggle('open', dropOpen);
     if (dropOpen) {
+      loadPast(id, PAST_TTL_MS);
       renderDrop();
-      loadPast();
     }
   }
   const onOutside = (e) => { if (dropOpen && !actions.contains(e.target)) toggleDrop(false); };
   document.addEventListener('pointerdown', onOutside);
 
-  // Phiên cũ trên máy: đầu máy đọc nhật ký Claude Code tự ghi (mọi phiên, kể cả phiên VS Code đã đóng),
-  // mỗi lần mở danh sách, trừ khi vừa đọc trong PAST_TTL_MS. Máy đang tắt thì giữ danh sách đọc lần trước.
-  let past = { state: 'idle', list: pastCache.get(id) || [], error: '', at: 0 };
-  let pastDone = 0; // đếm lần đọc, để lần đọc cũ trả lời muộn không ghi đè lần mới
-  async function loadPast() {
-    const m = store.machines.get(id);
-    if (!m?.online || past.state === 'loading' || Date.now() - past.at < PAST_TTL_MS) return;
-    const turn = ++pastDone;
-    past = { ...past, state: 'loading' };
-    renderDrop();
-    try {
-      const { transcripts } = await api.get(`/api/machines/${id}/transcripts`);
-      if (turn !== pastDone) return;
-      past = { state: 'ready', list: transcripts || [], error: '', at: Date.now() };
-      pastCache.set(id, past.list);
-    } catch (err) {
-      if (turn !== pastDone) return;
-      past = { ...past, state: 'error', error: err.message, at: 0 };
-    }
-    renderDrop();
-  }
-
+  // Phiên cũ trên máy: đầu máy đọc nhật ký Claude Code tự ghi (mọi phiên, kể cả phiên VS Code đã đóng), mỗi lần mở
+  // danh sách, trừ khi vừa đọc trong PAST_TTL_MS (lib/past.js, chung với màn chính). Máy đang tắt thì giữ danh sách
+  // đọc lần trước. Đọc xong thì lib/past.js báo "past" và danh sách vẽ lại.
   function renderDrop() {
     const m = store.machines.get(id);
     if (!m || !dropOpen) return;
     const scroll = drop.scrollTop; // dựng lại (máy báo trạng thái mới) không làm nhảy chỗ đang cuộn
     clear(drop);
-    add(drop, sessionDropContent(m, past, { id: floatId, toggle: toggleFloat }));
+    add(drop, sessionDropContent(m, pastOf(id), { id: floatId, toggle: toggleFloat }));
     drop.scrollTop = scroll;
   }
 
@@ -1019,7 +978,9 @@ export function mountMachine(root, id, { fromSession = '', fromGroup = '' } = {}
     store.on('machine_removed', (mid) => { if (mid === id) render(); }),
     store.on('session', (s) => { if (s.machineId === id) render(); }),
     store.on('session_removed', render),
+    store.on('past', (mid) => { if (mid === id) renderDrop(); }),
   ];
+  if (openList && store.machines.get(id)) toggleDrop(true);
   const tick = setInterval(render, 30000);
   // Phiên nổi lần trước của máy này (còn trong danh sách và vẫn thuộc máy này) thì mở lại.
   let savedFloat = '';
@@ -1052,12 +1013,13 @@ export function mountMachine(root, id, { fromSession = '', fromGroup = '' } = {}
 // Phiên cũ (đã đóng) trong danh sách phiên của máy, đổi sang dạng của phiên ngoài app.
 const fromPast = (t) => ({ claudeSessionId: t.claudeSessionId, title: t.title, cwd: t.cwd, modified: t.modified, active: Boolean(t.maybeActive), open: false, past: true });
 
-export function mountExternal(root, machineId, csid) {
+// fromHome: mở từ màn chính (đường dẫn có đuôi /h) thì nút quay lại về màn chính, không sang màn của máy.
+export function mountExternal(root, machineId, csid, { fromHome = false } = {}) {
   const machine = store.machines.get(machineId);
   const findEntry = () => {
     const open = store.machines.get(machineId)?.external?.find((t) => t.claudeSessionId === csid);
     if (open) return open;
-    const old = pastCache.get(machineId)?.find((t) => t.claudeSessionId === csid);
+    const old = pastOf(machineId).list.find((t) => t.claudeSessionId === csid);
     return old ? fromPast(old) : null;
   };
   const timeline = h('main', { class: 'timeline scroll' }, h('div', { class: 'loading' }, 'Đang đọc nhật ký…'));
@@ -1068,7 +1030,7 @@ export function mountExternal(root, machineId, csid) {
   const barText = h('span');
   const view = h('div', { class: 'view external' },
     h('header', { class: 'topbar' },
-      h('a', { class: 'icon-btn', href: `#/m/${machineId}`, 'aria-label': 'Quay lại' }, icon('back')),
+      h('a', { class: 'icon-btn', href: fromHome ? '#/' : `#/m/${machineId}`, 'aria-label': 'Quay lại' }, icon('back')),
       h('div', { class: 'title-wrap static' }, title, subtitle),
       more),
     h('div', { class: 'readonly-bar' }, icon('history', 14), barText),
@@ -1086,12 +1048,7 @@ export function mountExternal(root, machineId, csid) {
   }
   paintHead();
   // Mở thẳng bằng đường dẫn (tải lại trang) mà chưa có danh sách phiên cũ: hỏi máy một lần.
-  if (!findEntry() && machine?.online) {
-    api.get(`/api/machines/${machineId}/transcripts`).then(({ transcripts }) => {
-      pastCache.set(machineId, transcripts || []);
-      paintHead();
-    }).catch(() => {});
-  }
+  if (!findEntry() && machine?.online) loadPast(machineId, 0).then(paintHead);
 
   let mtime = 0;
   let stopped = false;

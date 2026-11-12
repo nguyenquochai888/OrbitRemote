@@ -158,6 +158,7 @@ export function mountHome(root) {
     store.on('enrollments', renderEnrollments),
     store.on('group', renderList),
     store.on('group_removed', renderList),
+    store.on('past', renderList), // vừa đọc xong phiên cũ trên một máy (lib/past.js)
     store.on('actions', renderQuick),
     store.on('connection', renderBrand),
     store.on('channel', renderBadge),
@@ -178,6 +179,10 @@ export function mountHome(root) {
       const href = a.getAttribute('href') || '';
       const id = href.slice(4); // "#/s/<id>", "#/m/<id>" hay "#/g/<id>"
       a.classList.toggle('current', href.startsWith('#/s/') ? isOpenSession(id) : href.startsWith('#/g/') ? isOpenGroup(id) : isOpenMachine(id));
+    }
+    // Phiên sẵn có trên máy (views/tree.js): "#/x/<máy>/<phiên Claude>/h", đang xem dù mở từ đâu.
+    for (const a of view.querySelectorAll('a.tree-ext')) {
+      a.classList.toggle('current', hash.startsWith((a.getAttribute('href') || '').replace(/\/h$/, '')));
     }
   }
   const tick = setInterval(renderList, 30000); // "vừa xong", "5 phút" và lúc thấy máy lần cuối chạy theo giờ

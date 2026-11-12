@@ -3,11 +3,11 @@
 // Luôn hỏi mạng trước (app hay đổi, và trạm luôn có bản mới nhất); chỉ khi không với tới
 // trạm mới lấy bản đã lưu. Không bao giờ lưu API hay luồng sự kiện: đó là dữ liệu sống.
 
-const CACHE = 'orbit-remote-shell-v34';
+const CACHE = 'orbit-remote-shell-v35';
 const SHELL = [
   '/', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon-180.png', '/icons/icon-192.png',
   '/lib/api.js', '/lib/dom.js', '/lib/icons.js', '/lib/md.js', '/lib/store.js', '/lib/custom.js', '/lib/render.js', '/lib/qr.js',
-  '/lib/screen-client.js', '/lib/clip-sync.js', '/lib/drag.js', '/lib/models.js', '/lib/mention-core.js',
+  '/lib/screen-client.js', '/lib/clip-sync.js', '/lib/drag.js', '/lib/models.js', '/lib/mention-core.js', '/lib/past.js',
   '/views/home.js', '/views/session.js', '/views/sheets.js', '/views/settings.js', '/views/channel.js', '/views/machines.js', '/views/pair.js',
   '/views/screen.js', '/views/viewer.js', '/views/group.js', '/views/tree.js', '/views/move.js', '/views/claude-login.js', '/views/mention.js',
 ];

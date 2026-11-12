@@ -6,15 +6,24 @@
 // chạy hay tạm dừng, có phiên online, hoặc là nhóm mới chưa có phiên nào (để còn kéo phiên vào). Nhóm nằm
 // dưới máy của trưởng nhóm và chứa mọi phiên của nó (phiên ở máy khác ghi thêm tên máy), nên không phiên
 // nào hiện hai lần. Máy đang bật mà có phiên đã dừng thì có mặt ở cả hai mục.
+//
+// Dưới mỗi máy đang bật còn có các phiên Claude sẵn có trên máy mà app không giữ: phiên đang mở trong VS Code hay
+// terminal, và vài phiên cũ mới nhất (nhật ký Claude Code, lib/past.js), kèm nút xem tất cả. Máy vừa cài Orbit Remote
+// chưa mở phiên nào từ app thì vẫn thấy ngay các phiên đã có của nó.
 
 import { h, timeAgo } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { store } from '../lib/store.js';
+import { externalRow, loadPast, pastOf, pastRow } from '../lib/past.js';
 import { sessionCard, isOpenMachine } from './home.js';
 import { GROUP_STATUS, STATUS_ORDER, isOpenGroup, openNewGroup } from './group.js';
 import { openNewSession } from './sheets.js';
 
 const RUNNING = new Set(['starting', 'idle', 'busy', 'waiting']);
+// Phiên cũ trên máy ở màn chính: số dòng hiện sẵn (còn lại xem ở màn của máy), và bản đọc dùng lại được bao lâu. Màn
+// chính luôn mở (cột trái của bản PC), nên không hỏi máy dày: đọc lại khi quá hạn, hay khi phiên ngoài app của máy đổi.
+export const HOME_PAST_MAX = 5;
+export const HOME_PAST_MS = 5 * 60 * 1000;
 
 // ---- Thu gọn và xổ ra ------------------------------------------------------------------------------
 // Khoá: "label:online", "label:offline", "m:<mục>:<máy>" (một máy có thể ở cả hai mục), "g:<nhóm>".
@@ -167,14 +176,43 @@ function lastSeenText(iso) {
   return /\d+\/\d+/.test(ago) ? `thấy lần cuối ${ago}` : `thấy ${ago} trước`;
 }
 
+// Phiên Claude sẵn có trên một máy đang bật mà app không giữ: đang mở ngoài app, rồi vài phiên cũ mới nhất. Phiên app
+// đang giữ (chạy hay đã dừng, kể cả trong nhóm) và phiên đang mở ngoài app thì không lặp lại ở nhóm phiên cũ.
+function onMachine(m) {
+  const outside = m.external || [];
+  const shown = new Set(outside.map((t) => t.claudeSessionId));
+  for (const s of store.sessions.values()) if (s.machineId === m.id && s.claudeSessionId) shown.add(s.claudeSessionId);
+  const past = pastOf(m.id);
+  const older = past.list.filter((t) => !shown.has(t.claudeSessionId));
+  return { outside, older, loading: past.state === 'loading' && !past.list.length };
+}
+
+const isOpenExternal = (mid, csid) => (location.hash || '').startsWith(`#/x/${mid}/${csid}`);
+
+function onMachineRows(m, { outside, older }) {
+  if (!outside.length && !older.length) return null;
+  const opts = (csid) => ({ fromHome: true, extraClass: `tree-ext${isOpenExternal(m.id, csid) ? ' current' : ''}` });
+  const section = (title, count, rows) => h('div', { class: 'tree-ext-group' },
+    h('div', { class: 'tree-ext-label' }, title, h('span', { class: 'group-count' }, count)), rows);
+  return [
+    outside.length ? section('Đang mở ngoài app', outside.length, outside.map((t) => externalRow(m.id, t, opts(t.claudeSessionId)))) : null,
+    older.length ? section('Phiên cũ trên máy', older.length,
+      [older.slice(0, HOME_PAST_MAX).map((t) => pastRow(m.id, t, opts(t.claudeSessionId))),
+        older.length > HOME_PAST_MAX
+          ? h('a', { class: 'tree-ext-more', href: `#/m/${m.id}/list` }, `Xem tất cả ${older.length} phiên cũ`, icon('chevron', 13))
+          : null]) : null,
+  ];
+}
+
 function machineBlock(label, m, items) {
   const cards = [...items.sessions].sort(byActivity);
   const members = items.groups.flatMap(groupMembers);
   const count = cards.length + members.length;
   const waiting = [...cards, ...members].filter((s) => s.status === 'waiting').length;
-  const outside = m.external?.length || 0;
+  const local = label === 'online' && m.online ? onMachine(m) : null;
+  const outside = local?.outside.length || 0;
   const info = label === 'online'
-    ? [count ? `${count} phiên` : 'chưa có phiên', outside ? `${outside} ngoài app` : ''].filter(Boolean).join(' · ')
+    ? [count ? `${count} phiên` : '', outside ? `${outside} ngoài app` : '', !count && !outside ? 'chưa có phiên chạy' : ''].filter(Boolean).join(' · ')
     : m.online ? `đang bật · ${count} phiên đã dừng` : ['đang tắt', lastSeenText(m.lastSeen)].filter(Boolean).join(' · ');
   const head = h(m.unknown ? 'span' : 'a', { class: `machine-label tree-machine${!m.unknown && isOpenMachine(m.id) ? ' current' : ''}`, ...(m.unknown ? {} : { href: `#/m/${m.id}` }) },
     h('span', { class: `mini-dot ${m.online ? 'on' : 'off'}` }),
@@ -185,12 +223,14 @@ function machineBlock(label, m, items) {
   const body = [];
   for (const g of [...items.groups].sort(byGroup)) body.push(groupBlock(g, m.id));
   if (cards.length) body.push(h('div', { class: 'cards' }, cards.map((s) => sessionCard(s, { showMachine: false }))));
+  const extra = local ? onMachineRows(m, local) : null;
   if (!body.length) {
     body.push(label === 'online'
-      ? h('div', { class: 'tree-empty' }, 'Chưa có phiên đang chạy.',
+      ? h('div', { class: 'tree-empty' }, extra ? 'Chưa mở phiên nào từ app.' : local?.loading ? 'Đang đọc các phiên Claude trên máy…' : 'Chưa có phiên đang chạy.',
         h('button', { class: 'tree-empty-action', type: 'button', onclick: () => openNewSession({ machineId: m.id }) }, icon('plus', 13), 'Mở phiên'))
       : h('div', { class: 'tree-empty' }, 'Không còn phiên nào.'));
   }
+  if (extra) body.push(...extra.filter(Boolean));
   return fold(`m:${label}:${m.id}`, `tree-machine-block${m.online ? '' : ' offline'}${waiting ? ' attention' : ''}`, head, body);
 }
 
@@ -223,7 +263,10 @@ function labelBlock(label, data) {
   return fold(`label:${label}`, `tree-label tree-${label}${waiting ? ' attention' : ''}`, head, body, { wholeHead: true });
 }
 
+// Vẽ cây. Kèm hỏi phiên cũ của các máy đang bật khi bản nhớ đã quá hạn (lib/past.js chỉ báo "past" sau khi đọc
+// xong, nên hỏi ngay trong lúc vẽ không làm vẽ lồng); màn chính nghe "past" để vẽ lại.
 export function homeTree() {
+  for (const m of store.machines.values()) if (m.online) loadPast(m.id, HOME_PAST_MS);
   const lists = collect();
   return h('div', { class: 'tree' }, labelBlock('online', lists.online), labelBlock('offline', lists.offline));
 }

@@ -200,13 +200,15 @@ function route() {
   // đúng màn đó; mở từ màn chính (#/s/<phiên>) thì về màn chính.
   const session = /^#\/s\/([\w-]+)(?:\/([gm])\/([\w-]+))?/.exec(hash);
   // #/m/<máy>/s/<phiên>[/g/<nhóm>]: mở từ màn một phiên, nút quay lại của màn máy đưa về đúng phiên đó (giữ cả nhóm).
-  const machine = /^#\/m\/([\w-]+)(?:\/s\/([\w-]+)(?:\/g\/([\w-]+))?)?/.exec(hash);
-  const external = /^#\/x\/([\w-]+)\/([0-9a-f-]{36})/i.exec(hash);
+  // #/m/<máy>/list: mở sẵn danh sách Phiên của máy (nút "Xem tất cả" dưới máy ở màn chính).
+  const machine = /^#\/m\/([\w-]+)(?:\/s\/([\w-]+)(?:\/g\/([\w-]+))?|\/(list))?/.exec(hash);
+  // #/x/<máy>/<phiên Claude>[/h]: xem chỉ-đọc một phiên ngoài app; đuôi /h là mở từ màn chính, quay lại về màn chính.
+  const external = /^#\/x\/([\w-]+)\/([0-9a-f-]{36})(\/h)?/i.exec(hash);
   const group = /^#\/g\/([\w-]+)/.exec(hash);
   if (session) unmount = mountSession(root, session[1], { fromGroup: session[2] === 'g' ? session[3] : '', fromMachine: session[2] === 'm' ? session[3] : '' });
   else if (group) unmount = mountGroup(root, group[1]);
-  else if (machine) unmount = mountMachine(root, machine[1], { fromSession: machine[2] || '', fromGroup: machine[3] || '' });
-  else if (external) unmount = mountExternal(root, external[1], external[2]);
+  else if (machine) unmount = mountMachine(root, machine[1], { fromSession: machine[2] || '', fromGroup: machine[3] || '', openList: Boolean(machine[4]) });
+  else if (external) unmount = mountExternal(root, external[1], external[2], { fromHome: Boolean(external[3]) });
   else if (hash.startsWith('#/settings')) unmount = mountSettings(root);
   else if (hash.startsWith('#/channel')) unmount = mountChannel(root);
   else unmount = side ? mountWelcome(root) : mountHome(root);

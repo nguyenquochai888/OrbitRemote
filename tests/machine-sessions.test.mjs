@@ -79,14 +79,16 @@ const TRANSCRIPTS = [
   { claudeSessionId: csid(3), title: 'setup cho máy này', cwd: 'C:\\Orbit', modified: '2026-10-27T14:53:00Z', sizeKb: 447, maybeActive: false },
   { claudeSessionId: csid(4), title: 'Đang mở ở terminal', cwd: 'C:\\Orbit', modified: '2026-10-30T09:59:00Z', sizeKb: 12, maybeActive: true },
 ];
+// Máy có nhiều phiên cũ (máy của một người vừa cài Orbit Remote, đã dùng Claude Code lâu): chín phiên VS Code đã đóng.
+const MANY = Array.from({ length: 9 }, (_, i) => ({ claudeSessionId: `1000000${i}-0000-4000-8000-000000000000`, title: `Phiên cũ ${i}`, cwd: 'D:\\Game', modified: `2026-10-2${i}T08:00:00Z`, sizeKb: 300, maybeActive: false }));
 const calls = [];
 // Màn của máy còn hỏi nhiệt độ máy theo nhịp; phép kiểm này chỉ đếm lần hỏi danh sách phiên.
-const transcriptCalls = () => calls.filter((p) => p.endsWith('/transcripts'));
+const transcriptCalls = (mid = '') => calls.filter((p) => p.endsWith('/transcripts') && (!mid || p === `/api/machines/${mid}/transcripts`));
 let fail = false;
 define('fetch', async (path) => {
   calls.push(path);
   if (fail) return { ok: false, status: 502, json: async () => ({ error: 'Máy không trả lời.' }) };
-  return { ok: true, status: 200, json: async () => ({ transcripts: TRANSCRIPTS, dirs: ['C:\\Orbit'] }) };
+  return { ok: true, status: 200, json: async () => ({ transcripts: path.includes('/m4/') ? MANY : TRANSCRIPTS, dirs: ['C:\\Orbit'] }) };
 });
 
 const { store } = await import('../web/lib/store.js');
@@ -173,5 +175,73 @@ test('xem một phiên cũ: tên đúng, báo phiên đã đóng, có nút thao 
   } finally {
     unmount();
     fail = false;
+  }
+});
+
+test('màn chính: máy vừa cài, chưa mở phiên nào từ app, vẫn thấy phiên đang mở ngoài app và phiên cũ trên máy; không hỏi máy lặp lại, phiên ngoài app đổi thì đọc lại', async () => {
+  const { homeTree, HOME_PAST_MAX } = await import('../web/views/tree.js');
+  const blockOf = (tree, name) => tree.all('tree-machine-block').find((b) => b.find('machine-label-name').text() === name);
+  store.machines.set('m3', { id: 'm3', name: 'Máy bạn', online: true, platform: 'win32', screen: null,
+    external: [{ claudeSessionId: csid(4), title: 'Đang mở ở terminal', cwd: 'C:\\Orbit', modified: '2026-10-30T09:59:00Z', active: true, open: true }] });
+
+  let block = blockOf(homeTree(), 'Máy bạn');
+  assert.deepEqual(transcriptCalls('m3'), ['/api/machines/m3/transcripts'], 'màn chính tự hỏi máy đang bật các phiên cũ');
+  assert.match(block.find('machine-label-count').text(), /1 ngoài app/);
+  for (let i = 0; i < 5; i += 1) await tick();
+
+  block = blockOf(homeTree(), 'Máy bạn');
+  assert.match(block.find('tree-empty').text(), /Chưa mở phiên nào từ app/, 'không còn báo "chưa có phiên" khi máy đã có phiên');
+  const labels = block.all('tree-ext-label').map((l) => l.text().replace(/\d+$/, ''));
+  assert.deepEqual(labels, ['Đang mở ngoài app', 'Phiên cũ trên máy']);
+  const outside = block.all('ext').filter((r) => !r.classList.contains('past'));
+  assert.deepEqual(outside.map((r) => r.find('drop-name').text()), ['Đang mở ở terminal']);
+  assert.equal(outside[0].attrs.href, `#/x/m3/${csid(4)}/h`, 'chạm là xem hội thoại, quay lại về màn chính');
+  const past = block.all('past');
+  assert.deepEqual(past.map((r) => r.find('drop-name').text()), ['Kéo git về rồi restart đi', 'dựng trạm Orbit Remote trên máy này', 'Trả lời đúng một từ', 'setup cho máy này'],
+    'mọi phiên cũ trên máy, trừ phiên đang mở ngoài app (đã hiện ở trên)');
+  assert.equal(block.find('tree-ext-more'), null, 'ít phiên cũ thì không cần nút xem tất cả');
+
+  homeTree();
+  await tick();
+  assert.equal(transcriptCalls('m3').length, 1, 'vẽ lại màn chính không hỏi lại máy trong hạn');
+  store.machines.get('m3').external = []; // phiên ở terminal vừa đóng: thành phiên cũ
+  homeTree();
+  for (let i = 0; i < 5; i += 1) await tick();
+  assert.equal(transcriptCalls('m3').length, 2, 'phiên ngoài app đổi thì đọc lại danh sách phiên cũ');
+  block = blockOf(homeTree(), 'Máy bạn');
+  assert.equal(block.all('past').length, 5, 'phiên vừa đóng hiện ở nhóm phiên cũ');
+
+  store.machines.set('m4', { id: 'm4', name: 'Máy nhiều phiên', online: true, platform: 'win32', screen: null, external: [] });
+  homeTree();
+  for (let i = 0; i < 5; i += 1) await tick();
+  block = blockOf(homeTree(), 'Máy nhiều phiên');
+  assert.equal(block.all('past').length, HOME_PAST_MAX, 'chỉ hiện vài phiên cũ mới nhất');
+  const more = block.find('tree-ext-more');
+  assert.equal(more.attrs.href, '#/m/m4/list');
+  assert.match(more.text(), /Xem tất cả 9 phiên cũ/);
+
+  store.machines.set('m5', { id: 'm5', name: 'Máy tắt', online: false, platform: 'win32', screen: null, external: [] });
+  homeTree();
+  assert.equal(transcriptCalls('m5').length, 0, 'máy đang tắt thì không hỏi');
+});
+
+test('nút xem tất cả mở sẵn danh sách Phiên của máy; phiên mở từ màn chính thì nút quay lại về màn chính', async () => {
+  const root = new FakeEl('div');
+  const unmount = mountMachine(root, 'm4', { openList: true });
+  try {
+    assert.ok(root.find('session-drop').classList.contains('open'), 'danh sách Phiên mở sẵn');
+    for (let i = 0; i < 5; i += 1) await tick();
+    assert.equal(root.find('session-drop').all('past').length, 9, 'màn của máy có đủ mọi phiên cũ');
+  } finally {
+    unmount();
+  }
+  const root2 = new FakeEl('div');
+  const stop = mountExternal(root2, 'm4', MANY[0].claudeSessionId, { fromHome: true });
+  try {
+    const back = root2.all('icon-btn').find((b) => b.attrs['aria-label'] === 'Quay lại');
+    assert.equal(back.attrs.href, '#/');
+    assert.equal(root2.find('title').text(), 'Phiên cũ 0', 'dùng chung danh sách phiên cũ đã đọc ở màn chính');
+  } finally {
+    stop();
   }
 });

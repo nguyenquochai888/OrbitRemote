@@ -16,6 +16,9 @@ khiển màn hình máy, cho các phiên nhắn tin và làm việc nhóm với 
 
 - Máy nào chạy Orbit Remote là **tự hiện** trên app: lần đầu bấm **Cho nối** một lần, từ đó máy được nhớ, kể cả lúc tắt.
   Màn chính là cây **Online / Offline**: máy, nhóm phiên và phiên của từng máy.
+- **Phiên đã có trên máy hiện ngay**, kể cả máy vừa cài, chưa mở phiên nào từ app: dưới mỗi máy đang bật, màn chính liệt
+  kê các phiên Claude đang mở trong VS Code hay terminal và năm phiên cũ mới nhất trong nhật ký Claude Code, kèm nút **Xem
+  tất cả** cho phần còn lại. Chạm một phiên để đọc hội thoại, rồi tiếp tục ở app hay tách nhánh.
 - **Mở phiên mới, đóng, chạy lại** trên đúng máy mình chọn; **mở lại phiên cũ** từ nhật ký Claude Code; xem (chỉ đọc),
   tiếp tục hay tách nhánh các phiên đang mở tay trong VS Code hoặc terminal.
 - **Chat, dừng lượt đang chạy, duyệt quyền** (cho phép, từ chối, luôn cho phép) và trả lời câu hỏi nhiều lựa chọn của Claude.

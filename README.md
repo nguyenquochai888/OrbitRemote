@@ -19,6 +19,10 @@ they run on different machines.
 - Every machine running Orbit Remote **shows up in the app by itself**: tap **Cho nối** (allow) once, and from then on the
   machine is remembered, even while it is off. The home screen is an **Online / Offline** tree of machines, session groups
   and sessions.
+- **Sessions already on a machine show up right away**, even on a machine that has just been set up and has not opened
+  anything from the app: under each machine that is on, the home screen lists the Claude sessions open in VS Code or a
+  terminal and the five newest old sessions from Claude Code's transcripts, with **See all** (*Xem tất cả*) for the rest.
+  Tap one to read the conversation, then continue it in the app or fork it.
 - **Open, close and restart sessions** on the machine you pick; **reopen old sessions** from Claude Code's transcripts;
   view (read-only), continue or fork sessions that are open by hand in VS Code or a terminal.
 - **Chat, stop the running turn, approve permissions** (allow, deny, always allow) and answer Claude's multiple-choice
